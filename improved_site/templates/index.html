@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="OralWisdom V3 — AI-powered tooth segmentation and realistic shade simulation">
+    <title>OralWisdom V3 Segmentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=3.3">
+  </head>
+  <body>
+    <main class="app-shell">
+
+      <!-- ── Top bar ─────────────────────────────────────────────────────── -->
+      <section class="topbar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <div>
+            <p class="eyebrow">OralWisdom V3</p>
+            <h1>Tooth Segmentation &amp; Shade Sim</h1>
+          </div>
+        </div>
+        <div class="model-status {{ 'ready' if model_ready else 'missing' }}" id="modelStatus">
+          <span class="status-dot"></span>
+          {{ 'Model ready' if model_ready else 'Model missing' }}
+        </div>
+      </section>
+
+      {% if not model_ready %}
+      <section class="notice" role="alert">
+        Put your trained V3 model file here before running predictions:
+        <code>{{ model_path }}</code>
+      </section>
+      {% endif %}
+
+      <!-- ── Upload workspace ────────────────────────────────────────────── -->
+      <section class="workspace">
+        <form id="uploadForm" class="dropzone" role="button" aria-label="Upload dental image">
+          <input id="imageInput" name="image" type="file" accept="image/*" aria-hidden="true">
+          <div class="drop-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+          </div>
+          <h2>Drop an image here</h2>
+          <p>or click to select a smile / intraoral image</p>
+          <button type="button" id="chooseButton">Choose Image</button>
+        </form>
+
+        <aside class="panel" aria-label="Detection statistics">
+          <h2>Detection Output</h2>
+          <div class="legend-group">
+            <div class="legend"><span class="swatch tooth"></span>Other tooth</div>
+            <div class="legend"><span class="swatch canine"></span>Canine</div>
+            <div class="legend"><span class="swatch incisor"></span>Incisor</div>
+          </div>
+          <div class="stats" id="stats">
+            <div class="stat-card"><strong id="statTotal">0</strong><span>Total</span></div>
+            <div class="stat-card"><strong id="statTooth">0</strong><span>Tooth</span></div>
+            <div class="stat-card"><strong id="statCanine">0</strong><span>Canine</span></div>
+            <div class="stat-card"><strong id="statIncisor">0</strong><span>Incisor</span></div>
+          </div>
+          <div class="runtime-row" id="runtimeRow" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="runtimeText">—</span>
+          </div>
+        </aside>
+      </section>
+
+      <!-- ── Prediction result ───────────────────────────────────────────── -->
+      <section class="result-area" id="resultArea" hidden aria-live="polite">
+        <div class="result-header">
+          <div>
+            <p class="eyebrow">Segmentation Overlay</p>
+            <h2 id="resultTitle">Prediction</h2>
+          </div>
+          <div class="actions">
+            <a id="jsonLink" href="#" target="_blank" rel="noopener" class="btn-ghost">View JSON</a>
+            <a id="overlayLink" href="#" target="_blank" rel="noopener" class="btn-ghost">Open Overlay</a>
+          </div>
+        </div>
+        <img id="resultImage" alt="V3 segmentation overlay" loading="lazy">
+        <p id="savePath" class="save-path"></p>
+      </section>
+
+      <!-- ── Shade Simulation Panel ──────────────────────────────────────── -->
+      <section class="shade-panel" id="shadePanel" hidden aria-label="Teeth shade simulation">
+
+        <div class="shade-header">
+          <div class="shade-title-group">
+            <div class="shade-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </div>
+            <div>
+              <p class="eyebrow">Shade Simulation</p>
+              <h2>VITA Shade Preview</h2>
+            </div>
+          </div>
+          <div class="shade-header-actions">
+            <button type="button" id="beforeAfterBtn" class="btn-toggle" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+              Before / After
+            </button>
+            <a id="downloadShadeBtn" href="#" download class="btn-primary" hidden>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Result
+            </a>
+          </div>
+        </div>
+
+        <!-- Preset Group Header Tabs -->
+        <div class="vita-groups" role="tablist" aria-label="VITA shade group">
+          <button role="tab" class="vita-group-tab active" data-group="B" id="tabB" aria-selected="true" aria-controls="presetGroupB">B Series</button>
+          <button role="tab" class="vita-group-tab" data-group="A" id="tabA" aria-selected="false" aria-controls="presetGroupA">A Series</button>
+          <button role="tab" class="vita-group-tab" data-group="C" id="tabC" aria-selected="false" aria-controls="presetGroupC">C Series</button>
+          <button role="tab" class="vita-group-tab" data-group="D" id="tabD" aria-selected="false" aria-controls="presetGroupD">D Series</button>
+          <button role="tab" class="vita-group-tab" data-group="custom" id="tabCustom" aria-selected="false" aria-controls="presetGroupCustom">Custom</button>
+        </div>
+
+        <!-- Preset buttons per group -->
+        <div class="vita-preset-groups">
+
+          <div class="preset-group active" id="presetGroupB" role="tabpanel" aria-labelledby="tabB">
+            <p class="group-desc">Reddish-yellowish — lightest, most neutral whites</p>
+            <div class="preset-buttons" role="group" aria-label="B series presets">
+              <button type="button" class="preset-btn selected" data-preset="B1" id="presetB1">B1 <span>Brightest</span></button>
+              <button type="button" class="preset-btn" data-preset="B2" id="presetB2">B2</button>
+              <button type="button" class="preset-btn" data-preset="B3" id="presetB3">B3</button>
+              <button type="button" class="preset-btn" data-preset="B4" id="presetB4">B4 <span>Darkest</span></button>
+            </div>
+          </div>
+
+          <div class="preset-group" id="presetGroupA" role="tabpanel" aria-labelledby="tabA" hidden>
+            <p class="group-desc">Reddish-brownish — most common natural tooth shade</p>
+            <div class="preset-buttons" role="group" aria-label="A series presets">
+              <button type="button" class="preset-btn" data-preset="A1" id="presetA1">A1 <span>Lightest</span></button>
+              <button type="button" class="preset-btn" data-preset="A2" id="presetA2">A2</button>
+              <button type="button" class="preset-btn" data-preset="A3" id="presetA3">A3</button>
+              <button type="button" class="preset-btn" data-preset="A3.5" id="presetA3half">A3.5</button>
+              <button type="button" class="preset-btn" data-preset="A4" id="presetA4">A4 <span>Darkest</span></button>
+            </div>
+          </div>
+
+          <div class="preset-group" id="presetGroupC" role="tabpanel" aria-labelledby="tabC" hidden>
+            <p class="group-desc">Greyish — cool-toned, lower saturation</p>
+            <div class="preset-buttons" role="group" aria-label="C series presets">
+              <button type="button" class="preset-btn" data-preset="C1" id="presetC1">C1 <span>Lightest</span></button>
+              <button type="button" class="preset-btn" data-preset="C2" id="presetC2">C2</button>
+              <button type="button" class="preset-btn" data-preset="C3" id="presetC3">C3</button>
+              <button type="button" class="preset-btn" data-preset="C4" id="presetC4">C4 <span>Darkest</span></button>
+            </div>
+          </div>
+
+          <div class="preset-group" id="presetGroupD" role="tabpanel" aria-labelledby="tabD" hidden>
+            <p class="group-desc">Reddish-grey — warm-toned mid values</p>
+            <div class="preset-buttons" role="group" aria-label="D series presets">
+              <button type="button" class="preset-btn" data-preset="D2" id="presetD2">D2 <span>Lightest</span></button>
+              <button type="button" class="preset-btn" data-preset="D3" id="presetD3">D3</button>
+              <button type="button" class="preset-btn" data-preset="D4" id="presetD4">D4 <span>Darkest</span></button>
+            </div>
+          </div>
+
+          <div class="preset-group" id="presetGroupCustom" role="tabpanel" aria-labelledby="tabCustom" hidden>
+            <p class="group-desc">Fine-grained control over each dimension of the shade shift</p>
+            <div class="custom-sliders">
+              <div class="slider-row">
+                <label for="sliderBrightness">
+                  Brightness
+                  <span class="slider-hint">L* channel lift</span>
+                </label>
+                <div class="slider-track-wrap">
+                  <input type="range" id="sliderBrightness" min="0" max="40" step="1" value="18">
+                  <output for="sliderBrightness" id="outBrightness">18</output>
+                </div>
+              </div>
+              <div class="slider-row">
+                <label for="sliderYellow">
+                  Yellow Reduction
+                  <span class="slider-hint">b* desaturation</span>
+                </label>
+                <div class="slider-track-wrap">
+                  <input type="range" id="sliderYellow" min="0" max="100" step="1" value="55">
+                  <output for="sliderYellow" id="outYellow">55%</output>
+                </div>
+              </div>
+              <div class="slider-row">
+                <label for="sliderWarmth">
+                  Warmth
+                  <span class="slider-hint">a* tint (cool ↔ warm)</span>
+                </label>
+                <div class="slider-track-wrap">
+                  <input type="range" id="sliderWarmth" min="-30" max="30" step="1" value="0">
+                  <output for="sliderWarmth" id="outWarmth">0</output>
+                </div>
+              </div>
+              <button type="button" id="applyCustomBtn" class="btn-primary" style="width:100%;justify-content:center">
+                Apply Custom Shade
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Intensity slider (shown for preset groups only) -->
+        <div class="intensity-row" id="intensityRow">
+          <label for="intensitySlider">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            Intensity
+          </label>
+          <input type="range" id="intensitySlider" min="0" max="100" step="1" value="100" aria-label="Shade intensity">
+          <output for="intensitySlider" id="intensityValue">100%</output>
+        </div>
+
+        <!-- Shade result image -->
+        <div class="shade-result-wrap" id="shadeResultWrap" hidden>
+          <div class="shade-image-container">
+            <div class="shade-badge" id="shadeBadge">B1</div>
+            <img id="shadeImage" alt="Shade simulation result" loading="lazy">
+            <div class="shade-loading" id="shadeLoading" hidden>
+              <div class="spinner" aria-label="Processing shade simulation"></div>
+              <span>Applying shade…</span>
+            </div>
+          </div>
+          <p id="shadeSavePath" class="save-path"></p>
+        </div>
+
+      </section>
+
+      <!-- ── Smile Restoration Panel ──────────────────────────────────────── -->
+      <section class="restore-panel" id="restorePanel" hidden aria-label="Smile restoration">
+        <div class="restore-header">
+          <div class="restore-title-group">
+            <div class="shade-icon" aria-hidden="true">
+              <!-- sparkle/magic wand icon -->
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <div>
+              <p class="eyebrow">AI Smile Restoration</p>
+              <h2>Aesthetic Analysis & Restoration</h2>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 1: Analyze -->
+        <div class="restore-step" id="restoreStep1">
+          <button type="button" id="analyzeBtn" class="btn-primary restore-action-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            Analyze Smile
+          </button>
+          <p class="restore-hint">Runs geometric analysis on detected teeth (dimensions, spacing, symmetry, color)</p>
+        </div>
+
+        <div class="smile-design-controls" id="smileDesignControls">
+          <h3>Design your complete smile</h3>
+          <label><input type="checkbox" id="completeSmile" checked> Complete visible gaps with matching proposed teeth</label>
+          <p class="restore-hint" id="completionNotice">Review the proposed tooth shapes in the preview. This creates a cosmetic smile concept, not a treatment prediction.</p>
+          <p id="inputQualityNotice" class="restore-hint" hidden></p>
+          <div class="design-options-grid">
+            <label>Upper teeth<select id="designUpper"><option value="veneer_preview">Veneer appearance</option><option value="shade_only">Shade only</option><option value="preserve">Preserve</option></select></label>
+            <label>Lower teeth<select id="designLower"><option value="veneer_preview">Veneer appearance</option><option value="preserve">Preserve shape and shade</option><option value="shade_only">Harmonize shade</option></select></label>
+            <label>Appearance<select id="designShade"><option value="natural">Natural ivory</option><option value="brighter">Brighter natural</option><option value="bright">Bright ceramic</option></select></label>
+            <label>Veneer shape<select id="designShape"><option value="balanced">Balanced</option><option value="soft">Softer incisal contours</option><option value="original">Preserve original contour</option></select></label>
+            <label>Smile geometry<select id="designAlignment"><option value="aligned">Preview aligned smile</option><option value="preserve">Keep original arrangement</option></select></label>
+            <label>Alignment amount<input id="designAlignmentStrength" type="range" min="0" max="1" step="0.05" value="0.85"><span id="alignmentStrengthValue">85%</span></label>
+          </div>
+          <div class="design-options-grid">
+            <label>Veneer silhouette<select id="veneerTemplate"><option value="legacy">Standard silhouette</option><option value="natural_v1">Tooth-specific silhouette (preview)</option></select></label>
+            <label>Upper edge height<input id="upperEdge" type="range" min="-0.12" max="0.12" step="0.01" value="0"><output id="upperEdgeValue">0%</output></label>
+            <label>Upper smile curve<input id="upperCurve" type="range" min="-0.12" max="0.12" step="0.01" value="0"><output id="upperCurveValue">0%</output></label>
+            <label>Upper apparent width<input id="upperWidth" type="range" min="0.85" max="1.15" step="0.01" value="1"><output id="upperWidthValue">100%</output></label>
+            <label>Lower edge height<input id="lowerEdge" type="range" min="-0.12" max="0.12" step="0.01" value="0"><output id="lowerEdgeValue">0%</output></label>
+            <label>Lower smile curve<input id="lowerCurve" type="range" min="-0.12" max="0.12" step="0.01" value="0"><output id="lowerCurveValue">0%</output></label>
+            <label>Lower apparent width<input id="lowerWidth" type="range" min="0.85" max="1.15" step="0.01" value="1"><output id="lowerWidthValue">100%</output></label>
+          </div>
+          <p class="restore-hint">Shape controls apply in aligned mode. Edge and curve offsets are relative to visible tooth height; positive edge height lengthens the preview toward the opposing arch. Review the green outlines after each change.</p>
+          <p class="restore-hint">Alignment coordinates the edges, spacing and visible shape of the selected veneers. Review closely around crowded teeth and where the arches touch. Original contour turns alignment off. Choose lower veneers to align lower veneers too. This previews appearance; it does not predict tooth movement or bite correction.</p>
+        </div>
+
+        <!-- Analysis Results -->
+        <div class="restore-analysis" id="restoreAnalysis" hidden>
+          <h3>Geometry Analysis</h3>
+          <div class="analysis-grid" id="analysisGrid">
+            <!-- Populated dynamically -->
+          </div>
+          <div class="analysis-details" id="analysisDetails">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Restoration Plan -->
+        <div class="restore-plan" id="restorePlan" hidden>
+          <h3>Restoration Plan</h3>
+          <div class="plan-summary" id="planSummary"></div>
+          <div class="plan-edits" id="planEdits"></div>
+          <div id="designToothChoices" class="design-tooth-choices"></div>
+          <details class="design-mask-review"><summary>Review veneer outlines and selection</summary>
+            <p class="restore-hint">Yellow outlines show the detected teeth; green outlines show the proposed veneers. Review estimated upper/lower assignments and the proposed geometry before generating. Review tooth types and upper/lower assignments before updating the preview.</p>
+            <select id="designDrawMode"><option value="exclude">Protect a region</option></select>
+            <canvas id="designCanvas" width="512" height="512" aria-label="Mouth selection and correction canvas"></canvas>
+            <button type="button" id="clearDesignRegions" class="btn-primary">Clear drawn regions</button>
+            <p id="designRegionSummary" class="restore-hint"></p>
+          </details>
+          <p id="designDirtyNotice" class="restore-hint" hidden>Design changed. Update the preview before generating.</p>
+          <button type="button" id="updateDesignBtn" class="btn-primary">Update design preview</button>
+        </div>
+
+        <!-- Advanced VLM Analysis JSON (Optional / Testing Mode) -->
+        <details class="restore-vlm-details" id="restoreVlmDetails" hidden>
+          <summary class="restore-vlm-toggle">
+            <span>⚙ Advanced: Generation settings <span class="testing-badge">Optional</span></span>
+          </summary>
+          <div class="restore-vlm-input" id="restoreVlmInput">
+            <p class="restore-hint">These are cosmetic preferences and approximate measurements. You can customize the parameters or <a href="#" id="loadSampleBtn">load example JSON</a>.</p>
+            <textarea id="vlmJsonInput" rows="12" placeholder='Cosmetic appearance and generation settings...'></textarea>
+            <button type="button" id="submitVlmBtn" class="btn-primary" style="width:100%;justify-content:center;margin-top:8px">
+              Update Plan with Custom JSON
+            </button>
+          </div>
+        </details>
+
+        <!-- Step 3: Restore -->
+        <div class="restore-execute" id="restoreExecute" hidden>
+          <label for="generationMode">Results to compare</label>
+          <select id="generationMode" style="margin:8px 0 16px;padding:10px;border-radius:6px">
+            <option value="fast">One result — faster</option>
+            <option value="quality">Two variations — takes longer</option>
+          </select>
+          <button type="button" id="restoreBtn" class="btn-primary restore-action-btn restore-go">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Restore Smile
+          </button>
+          <p class="restore-hint">BrushNet generates within the highlighted area. Review tooth shapes and natural appearance before choosing a result.</p>
+        </div>
+
+        <!-- Loading indicator -->
+        <div class="restore-loading" id="restoreLoading" hidden>
+          <div class="spinner" aria-label="Processing"></div>
+          <span id="restoreLoadingText">Analyzing...</span>
+          <button type="button" id="cancelRestoreBtn" class="btn-primary" hidden>Cancel generation</button>
+        </div>
+
+        <!-- Result: Before/After -->
+        <div class="restore-result" id="restoreResult" hidden>
+          <h3>Restoration Result</h3>
+          <div class="restore-comparison">
+            <img id="restoreComparisonImg" alt="Before/After comparison" loading="lazy">
+          </div>
+          <div class="restore-result-actions">
+            <button type="button" id="newVariationBtn" class="btn-primary">Try another variation</button>
+            <a id="downloadRestoredBtn" href="#" download class="btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Restored Image
+            </a>
+            <div class="verification-badge" id="verificationBadge"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script src="{{ url_for('static', filename='app.js') }}?v=5.4"></script>
+  </body>
+</html>
