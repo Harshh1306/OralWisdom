@@ -1,0 +1,2 @@
+# Preserve release bytes so manifest hashes remain valid on every platform.
+* -text
